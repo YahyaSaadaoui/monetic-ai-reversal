@@ -1,0 +1,5 @@
+{
+  "auth": { "auth_id":"A200", "card":"**** 9999", "amount":120.50, "currency":"EUR", "merchant_id":"M09", "auth_time":"2025-08-09T10:00:00Z" },
+  "state": { "captured_amount": 0.00, "voided": false, "expiry_minutes": 30 },
+  "reversal_request": { "request_id":"R999", "type":"full", "request_time":"2025-08-09T11:00:01Z", "reason":"timeout" }
+}

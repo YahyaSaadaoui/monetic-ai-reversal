@@ -1,0 +1,7 @@
+agno
+google-genai
+python-dotenv
+pydantic
+pyyaml
+xmltodict
+requests

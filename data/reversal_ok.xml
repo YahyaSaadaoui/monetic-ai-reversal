@@ -1,0 +1,21 @@
+<case>
+      <auth>
+            <auth_id>A777</auth_id>
+            <card>**** 5555</card>
+            <amount>75.00</amount>
+            <currency>USD</currency>
+            <merchant_id>M77</merchant_id>
+            <auth_time>2025-08-09T14:05:00Z</auth_time>
+      </auth>
+      <state>
+            <captured_amount>0.00</captured_amount>
+            <voided>false</voided>
+            <expiry_minutes>90</expiry_minutes>
+      </state>
+      <reversal_request>
+            <request_id>R771</request_id>
+            <type>full</type>
+            <request_time>2025-08-09T14:06:10Z</request_time>
+            <reason>merchant_cancel</reason>
+      </reversal_request>
+</case>
