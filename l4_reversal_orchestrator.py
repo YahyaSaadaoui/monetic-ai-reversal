@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional, Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError, condecimal
-
+from csv import DictReader
 from agno.agent import Agent
 from agno.models.google import Gemini
 from agno.tools import tool
@@ -190,6 +190,139 @@ def notify_webhook_impl(decision: dict, ops: dict, webhook_url: str = WEBHOOK_UR
         return f"webhook_status={r.status_code}"
     except Exception as e:
         return f"webhook_error={str(e)}"
+
+def load_case_impl(path: str) -> dict:
+    def _to_bool(x: str) -> bool:
+        return str(x).strip().lower() in ("1", "true", "yes", "y")
+
+    p = Path(path)
+    raw = p.read_text(encoding="utf-8")
+
+    # XML path
+    if p.suffix.lower() == ".xml":
+        data = xmltodict.parse(raw)
+        c = data["case"]
+        return {
+            "auth": {
+                "auth_id": c["auth"]["auth_id"],
+                "card": c["auth"]["card"],
+                "amount": float(c["auth"]["amount"]),
+                "currency": c["auth"]["currency"],
+                "merchant_id": c["auth"]["merchant_id"],
+                "auth_time": c["auth"]["auth_time"],
+            },
+            "state": {
+                "captured_amount": float(c["state"]["captured_amount"]),
+                "voided": str(c["state"]["voided"]).lower() == "true",
+                "expiry_minutes": int(c["state"]["expiry_minutes"]),
+            },
+            "reversal_request": {
+                "request_id": c["reversal_request"]["request_id"],
+                "type": c["reversal_request"]["type"],
+                "request_time": c["reversal_request"]["request_time"],
+                "reason": c["reversal_request"]["reason"],
+            }
+        }
+
+    # CSV path
+    if p.suffix.lower() == ".csv":
+        with p.open("r", encoding="utf-8", newline="") as f:
+            rows = list(DictReader(f))
+        if not rows:
+            raise ValueError("CSV file is empty")
+        r = rows[0]  # one row = one case
+        try:
+            return {
+                "auth": {
+                    "auth_id": r["auth_id"],
+                    "card": r["card"],
+                    "amount": float(r["amount"]),
+                    "currency": r["currency"],
+                    "merchant_id": r["merchant_id"],
+                    "auth_time": r["auth_time"],
+                },
+                "state": {
+                    "captured_amount": float(r.get("captured_amount", 0) or 0),
+                    "voided": _to_bool(r.get("voided", "false")),
+                    "expiry_minutes": int(float(r.get("expiry_minutes", 0) or 0)),
+                },
+                "reversal_request": {
+                    "request_id": r["request_id"],
+                    "type": r["type"],
+                    "request_time": r["request_time"],
+                    "reason": r.get("reason", ""),
+                }
+            }
+        except KeyError as e:
+            raise ValueError(f"Missing required CSV column: {e.args[0]}") from e
+
+    # JSON path (default)
+    return json.loads(raw)
+
+def deep_merge(base: dict, override: dict) -> dict:
+    out = dict(base)
+    for k, v in (override or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+def evaluate_eligibility_impl(case: dict, rules: dict) -> dict:
+    rc = ReversalCase(**case)
+    authorized = float(rc.auth.amount)
+    captured = float(rc.state.captured_amount)
+    voided = rc.state.voided
+    expiry_minutes = rc.state.expiry_minutes or int(rules.get("expiry_minutes_default", 60))
+
+    # NEW: enforce merchant-allowed reversal types (if provided)
+    allowed_types = rules.get("allowed_reversal_types")
+    if allowed_types and rc.reversal_request.type not in allowed_types:
+        return {
+            "eligible": False,
+            "mode": "none",
+            "reversible_amount": 0.0,
+            "actions": [],
+            "notes": f"Reversal type '{rc.reversal_request.type}' not allowed for this merchant.",
+            "meta": {
+                "auth_id": rc.auth.auth_id,
+                "request_id": rc.reversal_request.request_id,
+                "merchant_id": rc.auth.merchant_id,
+                "currency": rc.auth.currency
+            }
+        }
+    # END NEW
+
+    auth_time = parse_ts(rc.auth.auth_time)
+    req_time = parse_ts(rc.reversal_request.request_time)
+    elapsed_min = (req_time - auth_time).total_seconds() / 60.0
+    ...
+
+def resolve_rules_impl(case: dict,
+                       default_path: str = "config/rules.yaml",
+                       rules_dir: str = "rules") -> dict:
+    """Load default rules and layer merchant-specific overrides, if present."""
+    # 1) load global defaults
+    base = load_rules_impl(default_path)
+
+    # 2) read merchant id from case
+    merchant_id = None
+    try:
+        merchant_id = case.get("auth", {}).get("merchant_id")
+    except Exception:
+        merchant_id = None
+
+    # 3) if merchant override exists, merge
+    if merchant_id:
+        mpath = Path(rules_dir) / f"{merchant_id}.yaml"
+        if mpath.exists():
+            with open(mpath, "r", encoding="utf-8") as f:
+                override = yaml.safe_load(f) or {}
+            return deep_merge(base, override)
+
+    return base
+
+
 @tool(show_result=True)
 def load_rules(path: str = "config/rules.yaml") -> dict:
     return load_rules_impl(path)
@@ -292,6 +425,11 @@ def evaluate_eligibility(case: dict, rules: dict) -> dict:
             "currency": rc.auth.currency
         }
     }
+    @tool(show_result=True)
+    def resolve_rules(case: dict,
+                    default_path: str = "config/rules.yaml",
+                    rules_dir: str = "rules") -> dict:
+        return resolve_rules_impl(case, default_path, rules_dir)
 
     if voided:
         decision["notes"] = "Authorization already voided."
@@ -386,12 +524,13 @@ def notify_webhook(decision: dict, ops: dict, webhook_url: str = WEBHOOK_URL) ->
 # ---------- Agents ----------
 planner = Agent(
     name="Planner",
-    role="Plan and call tools...",
+    role="Plan and call tools to load case, resolve rules, validate, evaluate, plan ledger ops, audit, and notify.",
     model=Gemini(id=MODEL_ID),
-    tools=[load_rules, load_case, validate_case, evaluate_eligibility, ledger_plan, audit_write, notify_webhook],
+    tools=[load_case, resolve_rules, validate_case, evaluate_eligibility, ledger_plan, audit_write, notify_webhook],
     reasoning=True,
     markdown=True,
 )
+
 
 
 reporter = Agent(
@@ -403,8 +542,8 @@ reporter = Agent(
 )
 
 def run_pipeline(case_path: str) -> dict:
-    rules = load_rules_impl("config/rules.yaml")
-    case = load_case_impl(case_path)
+    case = load_case_impl(case_path)                         # load input file
+    rules = resolve_rules_impl(case, "config/rules.yaml", "rules")  # defaults + merchant override
     if "invalid:" in validate_case_impl(case):
         raise ValueError("Invalid input case.")
     decision = evaluate_eligibility_impl(case, rules)
@@ -412,6 +551,7 @@ def run_pipeline(case_path: str) -> dict:
     audit_write_impl(decision, ops, DB_PATH)
     notify_webhook_impl(decision, ops, WEBHOOK_URL)
     return {"decision": decision, "ops": ops}
+
 
 
 if __name__ == "__main__":
@@ -422,9 +562,9 @@ if __name__ == "__main__":
     try:
         print("\n--- Level 4 (Planner orchestrates tools) ---\n")
         planner.print_response(
-            f"Load rules from config/rules.yaml, load case from {Path(case_path).resolve().as_posix()}, "
-            "validate it, evaluate eligibility, build ledger plan, audit to DB, and notify webhook. "
-            "Finally, return the JSON decision and ops.",
+            f"Load case from <path>, resolve rules (global + merchant override), validate it,
+                evaluate eligibility, build ledger plan, audit to DB, and notify webhook. Finally,
+                return the JSON decision and ops.",
             stream=True
         )
     except Exception as e:

@@ -1,0 +1,2 @@
+auth_id,card,amount,currency,merchant_id,auth_time,captured_amount,voided,expiry_minutes,request_id,type,request_time,reason
+A555,**** 1212,90.00,USD,M55,2025-08-09T14:00:00Z,10.00,false,60,R555,full,2025-08-09T14:05:00Z,customer_cancel

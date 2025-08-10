@@ -1,0 +1,2 @@
+auth_id,card,amount,currency,merchant_id,auth_time,captured_amount,voided,expiry_minutes,request_id,type,request_time,reason
+A901,**** 3434,50.00,EUR,M09,2025-08-09T10:00:00Z,0.00,false,30,R901,full,2025-08-09T11:01:00Z,timeout
