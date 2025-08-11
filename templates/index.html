@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Monetic Reversal UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 16px 0; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .btn { padding: 10px 16px; border-radius: 10px; border: 1px solid #888; cursor: pointer; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    textarea { width: 100%; min-height: 140px; border-radius: 10px; padding: 10px; border: 1px solid #ccc; }
+    pre { white-space: pre-wrap; word-wrap: break-word; background: #1111; border-radius: 10px; padding: 12px; }
+    .muted { opacity: 0.7; font-size: 0.9em; }
+    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; background:#eef; margin-left:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Monetic Reversal (UI)</h1>
+    <div class="muted">Upload a <b>JSON</b>, <b>XML</b>, or <b>CSV</b> case file, or paste the contents below. We’ll run the same rules you use in CLI.</div>
+
+    <div class="card">
+      <form id="form">
+        <div class="row">
+          <input type="file" id="file" name="file" accept=".json,.xml,.csv" />
+          <span class="muted">or paste:</span>
+        </div>
+        <div style="margin-top:10px;">
+          <textarea id="pasted" name="pasted" placeholder='Paste JSON or XML here (optional)'></textarea>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" id="runBtn" type="submit">Run</button>
+          <span class="muted">We’ll audit to SQLite and (optionally) notify your webhook.</span>
+        </div>
+      </form>
+    </div>
+
+    <div id="result" class="card" style="display:none;">
+      <div><b>Summary</b> <span id="eligPill" class="pill" style="display:none;"></span></div>
+      <div id="summary" style="margin-top:6px;"></div>
+
+      <div style="margin-top:14px;"><b>Decision JSON</b></div>
+      <pre id="decision"></pre>
+
+      <div style="margin-top:14px;"><b>Ledger Ops</b></div>
+      <pre id="ops"></pre>
+    </div>
+
+    <div id="error" class="card" style="display:none; border-color:#f88;">
+      <b>Error</b>
+      <div id="errmsg" style="margin-top:6px; color:#c00;"></div>
+    </div>
+
+    <div class="muted">Tip: merchant-specific overrides are read from <code>rules/&lt;merchant_id&gt;.yaml</code>. Defaults from <code>config/rules.yaml</code>.</div>
+  </div>
+
+  <script>
+    const form = document.getElementById('form');
+    const runBtn = document.getElementById('runBtn');
+    const fileInput = document.getElementById('file');
+    const pasted = document.getElementById('pasted');
+
+    const resultBox = document.getElementById('result');
+    const eligPill = document.getElementById('eligPill');
+    const summaryEl = document.getElementById('summary');
+    const decisionEl = document.getElementById('decision');
+    const opsEl = document.getElementById('ops');
+
+    const errorBox = document.getElementById('error');
+    const errmsg = document.getElementById('errmsg');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.style.display = 'none';
+      resultBox.style.display = 'none';
+      runBtn.disabled = true;
+      runBtn.textContent = 'Running...';
+
+      try {
+        const fd = new FormData();
+        if (fileInput.files[0]) fd.append('file', fileInput.files[0]);
+        if (pasted.value.trim() !== '') fd.append('pasted', pasted.value);
+
+        const res = await fetch('/api/process', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'Unknown error');
+        }
+
+        const d = data.result.decision;
+        summaryEl.textContent = data.summary || '';
+        decisionEl.textContent = JSON.stringify(d, null, 2);
+        opsEl.textContent = JSON.stringify(data.result.ops, null, 2);
+
+        eligPill.style.display = 'inline-block';
+        eligPill.textContent = d.eligible ? 'ELIGIBLE' : 'INELIGIBLE';
+        eligPill.style.background = d.eligible ? '#e6ffec' : '#ffecec';
+
+        resultBox.style.display = 'block';
+      } catch (err) {
+        errmsg.textContent = err.message || String(err);
+        errorBox.style.display = 'block';
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run';
+      }
+    });
+  </script>
+</body>
+</html>

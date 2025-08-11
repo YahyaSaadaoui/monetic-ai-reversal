@@ -6,3 +6,7 @@ pyyaml
 xmltodict
 requests
 packaging
+fastapi
+uvicorn
+python-multipart
+jinja2
