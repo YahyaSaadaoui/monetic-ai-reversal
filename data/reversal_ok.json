@@ -1,5 +1,21 @@
 {
-  "auth": { "auth_id":"A123", "card":"**** 4242", "amount":100.00, "currency":"USD", "merchant_id":"M01", "auth_time":"2025-08-09T14:05:00Z" },
-  "state": { "captured_amount": 20.00, "voided": false, "expiry_minutes": 60 },
-  "reversal_request": { "request_id":"R987", "type":"full", "request_time":"2025-08-09T14:20:00Z", "reason":"timeout" }
+  "auth": {
+    "auth_id": "A123",
+    "card": "**** 4242",
+    "amount": 100.0,
+    "currency": "USD",
+    "merchant_id": "M01",
+    "auth_time": "2025-08-09T14:05:00Z"
+  },
+  "state": {
+    "captured_amount": 20.0,
+    "voided": false,
+    "expiry_minutes": 60
+  },
+  "reversal_request": {
+    "request_id": "R987",
+    "type": "full",
+    "request_time": "2025-08-09T14:20:00Z",
+    "reason": "timeout"
+  }
 }

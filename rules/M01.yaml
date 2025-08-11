@@ -1,0 +1,5 @@
+# Merchant M01 overrides
+expiry_minutes_default: 90
+amount_tolerance: 0.50
+allowed_reversal_types: ["full", "partial"]
+notes: "M01: grocery — allow longer window."

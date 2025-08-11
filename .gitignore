@@ -2,4 +2,9 @@
 .env.*
 *.env
 .vscode/
+.vscode/*
 .idea/
+.venv
+.venv/
+.venv.*
+*.venv

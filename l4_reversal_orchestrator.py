@@ -109,7 +109,7 @@ def load_case_impl(path: str) -> dict:
     p = Path(path)
     raw = p.read_text(encoding="utf-8")
 
-    # XML path
+    # XML
     if p.suffix.lower() == ".xml":
         data = xmltodict.parse(raw)
         c = data["case"]
@@ -135,40 +135,51 @@ def load_case_impl(path: str) -> dict:
             }
         }
 
-    # CSV path
+    # CSV
     if p.suffix.lower() == ".csv":
         with p.open("r", encoding="utf-8", newline="") as f:
             rows = list(DictReader(f))
         if not rows:
             raise ValueError("CSV file is empty")
-        r = rows[0]  # one row = one case
-        try:
-            return {
-                "auth": {
-                    "auth_id": r["auth_id"],
-                    "card": r["card"],
-                    "amount": float(r["amount"]),
-                    "currency": r["currency"],
-                    "merchant_id": r["merchant_id"],
-                    "auth_time": r["auth_time"],
-                },
-                "state": {
-                    "captured_amount": float(r.get("captured_amount", 0) or 0),
-                    "voided": _to_bool(r.get("voided", "false")),
-                    "expiry_minutes": int(float(r.get("expiry_minutes", 0) or 0)),
-                },
-                "reversal_request": {
-                    "request_id": r["request_id"],
-                    "type": r["type"],
-                    "request_time": r["request_time"],
-                    "reason": r.get("reason", ""),
-                }
+        r = rows[0]
+        return {
+            "auth": {
+                "auth_id": r["auth_id"],
+                "card": r["card"],
+                "amount": float(r["amount"]),
+                "currency": r["currency"],
+                "merchant_id": r["merchant_id"],
+                "auth_time": r["auth_time"],
+            },
+            "state": {
+                "captured_amount": float(r.get("captured_amount", 0) or 0),
+                "voided": _to_bool(r.get("voided", "false")),
+                "expiry_minutes": int(float(r.get("expiry_minutes", 0) or 0)),
+            },
+            "reversal_request": {
+                "request_id": r["request_id"],
+                "type": r["type"],
+                "request_time": r["request_time"],
+                "reason": r.get("reason", ""),
             }
-        except KeyError as e:
-            raise ValueError(f"Missing required CSV column: {e.args[0]}") from e
+        }
 
-    # JSON path (default)
-    return json.loads(raw)
+    # JSON (default)
+    data = json.loads(raw)
+
+    # unwrap {"case": {...}} if present
+    if isinstance(data, dict) and "case" in data and "auth" not in data:
+        data = data["case"]
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Case JSON must be an object with 'auth/state/reversal_request'. Got {type(data).__name__}")
+
+    # minimal shape check (nice errors)
+    for k in ("auth", "state", "reversal_request"):
+        if k not in data:
+            raise ValueError(f"Case JSON missing top-level key: '{k}'")
+
+    return data
 
 def deep_merge(base: dict, override: dict) -> dict:
     out = dict(base)
@@ -186,7 +197,7 @@ def evaluate_eligibility_impl(case: dict, rules: dict) -> dict:
     voided = rc.state.voided
     expiry_minutes = rc.state.expiry_minutes or int(rules.get("expiry_minutes_default", 60))
 
-    # NEW: enforce merchant-allowed reversal types (if provided)
+    # Merchant policy: allowed reversal types
     allowed_types = rules.get("allowed_reversal_types")
     if allowed_types and rc.reversal_request.type not in allowed_types:
         return {
@@ -202,36 +213,80 @@ def evaluate_eligibility_impl(case: dict, rules: dict) -> dict:
                 "currency": rc.auth.currency
             }
         }
-    # END NEW
 
     auth_time = parse_ts(rc.auth.auth_time)
     req_time = parse_ts(rc.reversal_request.request_time)
     elapsed_min = (req_time - auth_time).total_seconds() / 60.0
-    ...
+
+    decision = {
+        "eligible": False,
+        "mode": "none",
+        "reversible_amount": 0.0,
+        "actions": [],
+        "notes": "",
+        "meta": {
+            "auth_id": rc.auth.auth_id,
+            "request_id": rc.reversal_request.request_id,
+            "merchant_id": rc.auth.merchant_id,
+            "currency": rc.auth.currency
+        }
+    }
+
+    # Rule 1: already voided
+    if voided:
+        decision["notes"] = "Authorization already voided."
+        return decision
+
+    # Rule 2: expired window
+    if elapsed_min > expiry_minutes:
+        decision["notes"] = f"Expired window: {elapsed_min:.1f} min > {expiry_minutes} min."
+        return decision
+
+    # Compute reversible amount
+    available = max(0.0, authorized - captured)
+    if available <= 0:
+        decision["notes"] = f"No funds on hold. Captured={captured:.2f} >= Authorized={authorized:.2f}."
+        return decision
+
+    # If any capture > 0 => only partial reversal is possible
+    if captured > 0:
+        decision["eligible"] = True
+        decision["mode"] = "partial"
+        decision["reversible_amount"] = round(available, 2)
+        decision["actions"] = [
+            f"Release hold: {available:.2f} {rc.auth.currency} to card",
+            f"Record reversal {rc.reversal_request.request_id} linked to {rc.auth.auth_id}",
+            f"Notify merchant {rc.auth.merchant_id}"
+        ]
+        decision["notes"] = f"Captured {captured:.2f}, so only {available:.2f} remains reversible."
+        return decision
+
+    # Otherwise full amount is reversible (no capture yet)
+    decision["eligible"] = True
+    decision["mode"] = "full"
+    decision["reversible_amount"] = round(available, 2)
+    decision["actions"] = [
+        f"Release hold: {available:.2f} {rc.auth.currency} to card",
+        f"Record reversal {rc.reversal_request.request_id} linked to {rc.auth.auth_id}",
+        f"Notify merchant {rc.auth.merchant_id}"
+    ]
+    decision["notes"] = "No capture yet; full amount is on hold."
+    return decision
 
 def resolve_rules_impl(case: dict,
                        default_path: str = "config/rules.yaml",
                        rules_dir: str = "rules") -> dict:
-    """Load default rules and layer merchant-specific overrides, if present."""
-    # 1) load global defaults
     base = load_rules_impl(default_path)
-
-    # 2) read merchant id from case
-    merchant_id = None
-    try:
-        merchant_id = case.get("auth", {}).get("merchant_id")
-    except Exception:
-        merchant_id = None
-
-    # 3) if merchant override exists, merge
+    if not isinstance(case, dict):
+        raise ValueError(f"resolve_rules_impl: expected dict case, got {type(case).__name__}")
+    merchant_id = case.get("auth", {}).get("merchant_id")
     if merchant_id:
         mpath = Path(rules_dir) / f"{merchant_id}.yaml"
         if mpath.exists():
-            with open(mpath, "r", encoding="utf-8") as f:
-                override = yaml.safe_load(f) or {}
+            override = yaml.safe_load(mpath.read_text(encoding="utf-8")) or {}
             return deep_merge(base, override)
-
     return base
+
 
 # ---------- Tools (Level-4 steps) ----------
 @tool(show_result=True)
@@ -263,16 +318,41 @@ def audit_write(decision: dict, ops: dict, db_path: str = DB_PATH) -> str:
 def notify_webhook(decision: dict, ops: dict, webhook_url: str = WEBHOOK_URL) -> str:
     return notify_webhook_impl(decision, ops, webhook_url)
 
+@tool(show_result=True)
+def resolve_rules(case: dict,
+                  default_path: str = "config/rules.yaml",
+                  rules_dir: str = "rules") -> dict:
+    return resolve_rules_impl(case, default_path, rules_dir)
+
+@tool(show_result=True, stop_after_tool_call=True)
+def process_case(path: str) -> dict:
+    """
+    Run full deterministic pipeline for a single case file (JSON/XML/CSV).
+    Returns {"decision": ..., "ops": ...}.
+    """
+    DEFAULT_RULES = "config/rules.yaml"
+    MERCHANT_RULES_DIR = "rules"
+    case = load_case_impl(path)
+    rules = resolve_rules_impl(case, DEFAULT_RULES, MERCHANT_RULES_DIR)
+    validity = validate_case_impl(case)
+    if validity.startswith("invalid:"):
+        raise ValueError(validity)
+    decision = evaluate_eligibility_impl(case, rules)
+    ops = ledger_plan_impl(decision)
+    audit_write_impl(decision, ops, DB_PATH)
+    notify_webhook_impl(decision, ops, WEBHOOK_URL)
+    return {"decision": decision, "ops": ops}
+
 # ---------- Agents ----------
 planner = Agent(
     name="Planner",
-    role="Plan and call tools to load case, resolve rules, validate, evaluate, plan ledger ops, audit, and notify.",
+    role="Process a reversal case end‑to‑end using process_case(path). "
+         "Do not invent parameters. Return only the tool result.",
     model=Gemini(id=MODEL_ID),
-    tools=[load_case, resolve_rules, validate_case, evaluate_eligibility, ledger_plan, audit_write, notify_webhook],
-    reasoning=True,
+    tools=[process_case],
+    reasoning=False,   # avoid empty reasoning warnings
     markdown=True,
 )
-
 
 
 
@@ -280,7 +360,7 @@ reporter = Agent(
     name="Reporter",
     role="Summarize the final decision and ops for humans in Markdown; keep it short and clear.",
     model=Gemini(id=MODEL_ID),
-    reasoning=False,
+    reasoning=True,
     markdown=True,
 )
 
@@ -430,11 +510,10 @@ if __name__ == "__main__":
     try:
         print("\n--- Level 4 (Planner orchestrates tools) ---\n")
         planner.print_response(
-            f"Load case from {case_path}, resolve rules (global + merchant override), validate it, "
-            "evaluate eligibility, build ledger plan, audit to DB, and notify webhook. Finally, "
-            "return the JSON decision and ops.",
-            stream=True
-        )
+        f"Run process_case on path={case_path} and return the JSON decision and ops.",
+        stream=True
+    )
+
     except Exception as e:
         print(f"\n[L4 planner fallback] {e}\n")
 
@@ -448,10 +527,9 @@ if __name__ == "__main__":
         # Reporter
         try:
             print("\n--- Reporter (LLM summary, optional) ---\n")
-            reporter.print_response(
-                f"Summarize in one paragraph for a product manager:\n{final_json}",
-                stream=True
-            )
+            planner.print_response(
+            f"Call process_case with path='{case_path}'. Return the JSON result.",
+            stream=True)
         except Exception as e:
             print(f"[Reporter fallback] {e}\n")
             d = res["decision"]

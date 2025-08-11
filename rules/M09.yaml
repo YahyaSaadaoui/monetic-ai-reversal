@@ -1,0 +1,5 @@
+# Merchant M09 overrides
+expiry_minutes_default: 20
+amount_tolerance: 0.01
+allowed_reversal_types: ["full"]
+notes: "M09: high risk — tighter window, no partial."

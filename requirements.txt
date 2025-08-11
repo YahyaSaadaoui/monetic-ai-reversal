@@ -5,3 +5,4 @@ pydantic
 pyyaml
 xmltodict
 requests
+packaging
