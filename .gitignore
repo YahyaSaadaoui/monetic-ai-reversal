@@ -1,10 +1,10 @@
+# Exclude environment variables files
 .env
 .env.*
-*.env
+
+# Exclude IDE and editor-specific directories
 .vscode/
-.vscode/*
 .idea/
-.venv
+
+# Exclude Python virtual environment directories
 .venv/
-.venv.*
-*.venv
