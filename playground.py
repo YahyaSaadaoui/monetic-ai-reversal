@@ -5,6 +5,8 @@ from agno.playground import Playground
 from agno.storage.sqlite import SqliteStorage
 
 from ui_tools import process_case, process_uploaded_file
+import base64
+from fastapi import UploadFile, File, HTTPException
 
 AGENT_DB = "tmp/agents.db"
 os.makedirs("tmp", exist_ok=True)
@@ -29,7 +31,19 @@ reversal_agent = Agent(
 
 playground = Playground(agents=[reversal_agent])
 app = playground.get_app()
-
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        b64 = base64.b64encode(content).decode("utf-8")
+        # Call your tool entrypoint directly (no LLM in the loop)
+        result = process_uploaded_file.entrypoint(
+            filename=file.filename,
+            content_b64=b64
+        )
+        return result  # -> {"decision": {...}, "ops": {...}}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 if __name__ == "__main__":
     # runs uvicorn under the hood with reload
     playground.serve("playground:app", host="127.0.0.1", port=7777, reload=True)
