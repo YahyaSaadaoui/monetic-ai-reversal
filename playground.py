@@ -3,7 +3,8 @@ from agno.agent import Agent
 from agno.models.google import Gemini
 from agno.playground import Playground
 from agno.storage.sqlite import SqliteStorage
-
+from agno.playground import Playground
+from fastapi.middleware.cors import CORSMiddleware
 from ui_tools import process_case, process_uploaded_file
 import base64
 from fastapi import UploadFile, File, HTTPException
@@ -44,6 +45,17 @@ async def upload(file: UploadFile = File(...)):
         return result  # -> {"decision": {...}, "ops": {...}}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://10.1.19.45:3000",   # your dev NIC shown by Next.js
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 if __name__ == "__main__":
     # runs uvicorn under the hood with reload
     playground.serve("playground:app", host="127.0.0.1", port=7777, reload=True)

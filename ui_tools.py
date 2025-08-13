@@ -37,22 +37,38 @@ def process_case(path: str) -> dict:
     """Deterministic pipeline for a single file already on disk."""
     return _run_process_case_from_path(path)
 
+
 @tool(show_result=True, stop_after_tool_call=True)
 def process_uploaded_file(filename: str, content_b64: str) -> dict:
-    """
-    Accepts a base64 file from the UI (json/xml/csv), writes to a temp file with the correct suffix,
-    then runs the same pipeline as process_case.
-    """
-    import base64
+    import base64, tempfile, zipfile, os, json
+    from pathlib import Path
+
     suffix = Path(filename).suffix.lower() or ".json"
     tmp_path = None
     try:
         data = base64.b64decode(content_b64)
+
+        # ZIP => unpack and run batch on the extracted folder
+        if suffix == ".zip":
+            with tempfile.TemporaryDirectory() as tmpdir:
+                zippath = Path(tmpdir) / "upload.zip"
+                zippath.write_bytes(data)
+                with zipfile.ZipFile(zippath, "r") as zf:
+                    zf.extractall(tmpdir)
+                # run your existing batch pipeline on the extracted folder
+                from l4_reversal_orchestrator import run_pipeline_batch
+                summary = run_pipeline_batch(tmpdir, out_dir="out")
+                return {"batch_summary": summary}
+
+        # Single file path (json/xml/csv) -> deterministic pipeline
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(data)
             tmp_path = tmp.name
         return _run_process_case_from_path(tmp_path)
+
     finally:
         if tmp_path and Path(tmp_path).exists():
-            try: os.remove(tmp_path)
-            except Exception: pass
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass

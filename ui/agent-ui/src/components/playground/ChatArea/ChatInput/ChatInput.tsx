@@ -7,15 +7,19 @@ import { usePlaygroundStore } from '@/store'
 import useAIChatStreamHandler from '@/hooks/useAIStreamHandler'
 import { useQueryState } from 'nuqs'
 import Icon from '@/components/ui/icon'
+import type { PlaygroundChatMessage } from '@/types/playground'
 
 
 const ChatInput = () => {
   const { chatInputRef } = usePlaygroundStore()
+  const setMessages = usePlaygroundStore((s) => s.setMessages)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { handleStreamResponse } = useAIChatStreamHandler()
   const [selectedAgent] = useQueryState('agent')
   const [inputMessage, setInputMessage] = useState('')
   const isStreaming = usePlaygroundStore((state) => state.isStreaming)
+  const base = usePlaygroundStore.getState().selectedEndpoint || ''
+ 
   const handleSubmit = async () => {
     if (!inputMessage.trim()) return
 
@@ -40,27 +44,33 @@ const ChatInput = () => {
     try {
       const form = new FormData()
       form.append('file', file)
-      // IMPORTANT: This is the playground endpoint you started with `python playground.py`
-      const endpoint = 'http://localhost:7777/upload'
+
+      const endpoint =
+        (base.replace(/\/v1\/?$/, '') || 'http://127.0.0.1:7777') + '/upload'
+
       const res = await fetch(endpoint, {
         method: 'POST',
         body: form
       })
       if (!res.ok) throw new Error(await res.text())
+
       const json = await res.json()
 
-      // Display result in the chat UI (user-friendly)
-      addMessage({
-        role: 'user',
-        content: `Uploaded file: ${file.name}`
-      })
-      addMessage({
+      setMessages(prev => [
+      ...prev,
+      { role: 'user', content: `Uploaded
+      file: ${file.name}` },
+      {
         role: 'assistant',
         content: '```json\n' + JSON.stringify(json, null, 2) + '\n```'
-      })
+      }
+    ])
+
       toast.success('File processed successfully')
     } catch (err) {
-      toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(
+        `Upload failed: ${err instanceof Error ? err.message : String(err)}`
+      )
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
@@ -114,4 +124,4 @@ const ChatInput = () => {
   )
 }
 
-export default ChatInput
+  export default ChatInput;
