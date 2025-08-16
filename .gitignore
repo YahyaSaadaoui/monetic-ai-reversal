@@ -8,3 +8,4 @@
 
 # Exclude Python virtual environment directories
 .venv/
+__pycache__

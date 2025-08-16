@@ -3,8 +3,9 @@ import os, json, tempfile
 from pathlib import Path
 from l4_reversal_orchestrator import run_pipeline_batch
 from agno.tools import tool
-
-# re-use your existing pure funcs & constants
+import rarfile
+import base64, tempfile, zipfile, os, json
+from pathlib import Path
 from l4_reversal_orchestrator import (
     load_case_impl,
     resolve_rules_impl,
@@ -43,24 +44,41 @@ def process_uploaded_file(filename: str, content_b64: str) -> dict:
     import base64, tempfile, zipfile, os, json
     from pathlib import Path
 
+    # ⬇️ NEW: import rarfile
+    import rarfile
+
     suffix = Path(filename).suffix.lower() or ".json"
     tmp_path = None
     try:
         data = base64.b64decode(content_b64)
 
-        # ZIP => unpack and run batch on the extracted folder
-        if suffix == ".zip":
+        # ZIP/RAR => unpack and run batch on the extracted folder
+        if suffix in (".zip", ".rar"):
             with tempfile.TemporaryDirectory() as tmpdir:
-                zippath = Path(tmpdir) / "upload.zip"
-                zippath.write_bytes(data)
-                with zipfile.ZipFile(zippath, "r") as zf:
-                    zf.extractall(tmpdir)
+                if suffix == ".zip":
+                    zippath = Path(tmpdir) / "upload.zip"
+                    zippath.write_bytes(data)
+                    with zipfile.ZipFile(zippath, "r") as zf:
+                        zf.extractall(tmpdir)
+                else:
+                    rarpath = Path(tmpdir) / "upload.rar"
+                    rarpath.write_bytes(data)
+                    try:
+                        with rarfile.RarFile(rarpath) as rf:
+                            rf.extractall(tmpdir)
+                    except rarfile.RarCannotExec:
+                        raise RuntimeError(
+                            "RAR support requires the 'unrar' binary installed and available on PATH."
+                        )
+                    except rarfile.BadRarFile as e:
+                        raise RuntimeError(f"Invalid RAR file: {e}")
+
                 # run your existing batch pipeline on the extracted folder
                 from l4_reversal_orchestrator import run_pipeline_batch
                 summary = run_pipeline_batch(tmpdir, out_dir="out")
                 return {"batch_summary": summary}
 
-        # Single file path (json/xml/csv) -> deterministic pipeline
+        # Single-file path (json/xml/csv) -> deterministic pipeline
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(data)
             tmp_path = tmp.name
