@@ -1,4 +1,0 @@
-case_file,eligible,mode,reversible_amount,currency,notes
-reversal_ok.csv,1,partial,80.0,USD,"Captured 10.00, so only 80.00 remains reversible."
-reversal_ok.json,1,partial,80.0,USD,"Captured 20.00, so only 80.00 remains reversible."
-reversal_ok.xml,1,full,75.0,USD,No capture yet; full amount is on hold.

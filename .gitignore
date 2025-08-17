@@ -1,5 +1,4 @@
-# Python-specific exclusions
-.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -16,6 +15,8 @@ build/
 .env
 .env.*
 *.env
+out/*.json
+!out/.gitkeep  # Keep empty out/ directory if you use .gitkeep
 
 # IDE and editor-specific files
 .vscode/
@@ -33,6 +34,7 @@ node_modules/
 npm-debug.log*
 pnpm-lock.yaml
 package-lock.json
+yarn.lock
 
 # SQLite database
 reversal_audit.db
@@ -46,10 +48,10 @@ reversal_audit.db
 Thumbs.db
 
 # Output directories
-out/*
+out/
 !out/.gitkeep  # Keep empty out/ directory if you use .gitkeep
 
-# Archives and sample data (if they are for testing only)
+# Sample data and archives (if for testing only)
 data/*.zip
 data/*.rar
 
@@ -71,5 +73,9 @@ htmlcov/
 logs/
 *.log.*
 
-# RAR-specific binary (if accidentally included)
-unrar
+# Temporary files from UI or tmp directories
+tmp/
+ui/agent-ui/tmp/
+
+# Text files that might be drafts
+*.md.txt
