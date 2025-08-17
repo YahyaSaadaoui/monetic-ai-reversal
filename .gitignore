@@ -1,11 +1,75 @@
-# Exclude environment variables files
+# Python-specific exclusions
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Environment variables
 .env
 .env.*
+*.env
 
-# Exclude IDE and editor-specific directories
+# IDE and editor-specific files
 .vscode/
 .idea/
+*.sublime-project
+*.sublime-workspace
 
-# Exclude Python virtual environment directories
-.venv/
-__pycache__
+# Node.js and Next.js-specific exclusions
+ui/agent-ui/node_modules/
+ui/agent-ui/.next/
+ui/agent-ui/out/
+ui/agent-ui/.pnpm-store/
+node_modules/
+*.log
+npm-debug.log*
+pnpm-lock.yaml
+package-lock.json
+
+# SQLite database
+reversal_audit.db
+
+# Temporary and generated files
+*.tmp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Output directories
+out/*
+!out/.gitkeep  # Keep empty out/ directory if you use .gitkeep
+
+# Archives and sample data (if they are for testing only)
+data/*.zip
+data/*.rar
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Coverage and testing reports
+.coverage
+coverage.xml
+*.cover
+htmlcov/
+
+# Cache files
+*.cache
+*.pytest_cache/
+
+# Local development logs
+logs/
+*.log.*
+
+# RAR-specific binary (if accidentally included)
+unrar
