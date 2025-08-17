@@ -1,4 +1,3 @@
-# playground.py
 import os
 from agno.agent import Agent
 from agno.models.google import Gemini
@@ -9,11 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from ui_tools import process_case, process_uploaded_file
 import base64
 from fastapi import UploadFile, File, HTTPException
-
-# ⬇️ add this import to summarize
 import json
-from l4_reversal_orchestrator import reporter  # already defined in your code
+from l4_reversal_orchestrator import reporter
 from agno.tools import tool
+
 
 AGENT_DB = "tmp/agents.db"
 os.makedirs("tmp", exist_ok=True)
@@ -94,14 +92,12 @@ def summarize_result(raw: dict) -> str:
         notes = d.get("notes", "")
 
         # Short, plain sentence:
-        # ex: "Reversal eligible (full). Amount 75 USD. Notes: No capture yet; full amount is on hold."
         amt_txt = f"Amount {amt} {cur}." if amt else "Amount 0."
         mode_txt = f"({mode})" if mode and mode != "none" else "(none)"
         notes_txt = f" Notes: {notes}" if notes else ""
 
         return f"Reversal {verdict} {mode_txt}. {amt_txt}{notes_txt}"
     except Exception:
-        # last-resort fallback
         return "Processed the file. (Could not build a summary.)"
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -113,11 +109,7 @@ async def upload(file: UploadFile = File(...)):
             filename=file.filename,
             content_b64=b64
         )
-
-        # 3) Use the deterministic summary
         summary_text = summarize_result(raw)
-
-        # (optional) remember last result
         try:
             remember_last_result.entrypoint(result=raw)
         except Exception:

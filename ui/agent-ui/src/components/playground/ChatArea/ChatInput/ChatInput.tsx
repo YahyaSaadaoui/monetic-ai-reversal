@@ -1,4 +1,3 @@
-// src/components/playground/ChatArea/ChatInput/ChatInput.tsx
 'use client'
 import { useState, useRef } from 'react'
 import { toast } from 'sonner'
@@ -10,7 +9,6 @@ import { useQueryState } from 'nuqs'
 import Icon from '@/components/ui/icon'
 import type { PlaygroundChatMessage } from '@/types/playground'
 
-// --- helpers (typed) ---
 const now = () => Date.now()
 const makeMsg = (
   role: PlaygroundChatMessage['role'],
@@ -52,31 +50,21 @@ const ChatInput = () => {
   const handleFileSelected: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    // Build /upload from endpoint origin (works with/without /v1)
     const endpointURL = new URL(base || 'http://127.0.0.1:7777/v1')
     const uploadUrl   = `${endpointURL.origin}/upload`
 
     try {
       const form = new FormData()
       form.append('file', file)
-
-      // 1) push user message + EMPTY agent placeholder (triggers loader)
       const userMsg        = makeMsg('user',  `Uploaded file: ${file.name}`)
-      const placeholderMsg = makeMsg('agent', '') // empty => shows AgentThinkingLoader
+      const placeholderMsg = makeMsg('agent', '')
       setMessages((prev) => [...prev, userMsg, placeholderMsg])
-
       setIsStreaming(true)
-
-      // 2) call backend
       const res  = await fetch(uploadUrl, { method: 'POST', body: form })
       if (!res.ok) throw new Error(await res.text())
       const data: { ok: boolean; summary?: string } = await res.json()
       if (!data.ok) throw new Error('Upload failed')
-
       const summaryMsg = makeMsg('agent', data.summary ?? 'Processed.')
-
-      // 3) replace the MOST-RECENT EMPTY agent message with the summary
       setMessages((prev) => {
         const out = [...prev]
         let replaced = false
@@ -91,7 +79,6 @@ const ChatInput = () => {
         if (!replaced) out.push(summaryMsg)
         return out
       })
-
       toast.success('File processed successfully')
     } catch (err) {
       const errorMsg = makeMsg(
@@ -100,7 +87,6 @@ const ChatInput = () => {
       )
       setMessages((prev) => {
         const out = [...prev]
-        // Try to replace the pending placeholder if it exists
         for (let i = out.length - 1; i >= 0; i--) {
           const m = out[i]
           if (m.role === 'agent' && (!m.content || m.content === '')) {
@@ -108,7 +94,6 @@ const ChatInput = () => {
             return out
           }
         }
-        // Otherwise append the error
         return [...out, errorMsg]
       })
     } finally {
@@ -142,7 +127,6 @@ const ChatInput = () => {
       >
         <Icon type="send" color="primaryAccent" />
       </Button>
-
       <input
         type="file"
         accept=".json,.xml,.csv,.zip,.rar"

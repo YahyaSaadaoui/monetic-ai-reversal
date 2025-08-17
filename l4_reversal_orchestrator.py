@@ -46,7 +46,6 @@ class ReversalCase(BaseModel):
     state: State
     reversal_request: ReversalRequest
 
-# --- Pure implementations (no decorators) ---
 def load_rules_impl(path: str = "config/rules.yaml") -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
@@ -167,14 +166,12 @@ def load_case_impl(path: str) -> dict:
     # JSON (default)
     data = json.loads(raw)
 
-    # unwrap {"case": {...}} if present
     if isinstance(data, dict) and "case" in data and "auth" not in data:
         data = data["case"]
 
     if not isinstance(data, dict):
         raise ValueError(f"Case JSON must be an object with 'auth/state/reversal_request'. Got {type(data).__name__}")
 
-    # minimal shape check (nice errors)
     for k in ("auth", "state", "reversal_request"):
         if k not in data:
             raise ValueError(f"Case JSON missing top-level key: '{k}'")
@@ -197,7 +194,6 @@ def evaluate_eligibility_impl(case: dict, rules: dict) -> dict:
     voided = rc.state.voided
     expiry_minutes = rc.state.expiry_minutes or int(rules.get("expiry_minutes_default", 60))
 
-    # Merchant policy: allowed reversal types
     allowed_types = rules.get("allowed_reversal_types")
     if allowed_types and rc.reversal_request.type not in allowed_types:
         return {
@@ -365,7 +361,7 @@ reporter = Agent(
 )
 
 def run_pipeline(case_path: str) -> dict:
-    case = load_case_impl(case_path)                         # load input file
+    case = load_case_impl(case_path) # load input file
     rules = resolve_rules_impl(case, "config/rules.yaml", "rules")  # defaults + merchant override
     if "invalid:" in validate_case_impl(case):
         raise ValueError("Invalid input case.")
@@ -414,7 +410,7 @@ def run_pipeline_batch(folder: str, out_dir: str = "out") -> dict:
         "eligible_count": 0,
         "ineligible_count": 0,
         "mode_counts": {"full": 0, "partial": 0, "none": 0},
-        "currency_totals": {},  # e.g., {"USD": {"reversible_total": 0.0, "cases": 0}, ...}
+        "currency_totals": {}, 
     }
 
     for fp in files:
@@ -474,7 +470,7 @@ def run_pipeline_batch(folder: str, out_dir: str = "out") -> dict:
             for err in errors:
                 w.writerow([f"[ERROR] {err}", "", "", "", "", ""])
     except Exception:
-        # if CSV fails, ignore; JSON is the source of truth
+        # if CSV fails, ignore JSON is the source of truth
         pass
 
     return summary
