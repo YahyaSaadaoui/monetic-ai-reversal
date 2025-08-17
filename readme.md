@@ -1,16 +1,63 @@
 # Agno Agentics Reversal Eligibility Demo
 
-Lightweight, end-to-end demo that evaluates **card authorization reversal** eligibility from uploaded case files and shows a **human-readable summary** in a Next.js UI.
+Lightweight, end-to-end demo that evaluates card authorization reversal eligibility from uploaded case files and shows a human-readable summary in a Next.js UI.
 
-The stack:
+## Why This Project Exists
+
+### Non-Technical Explanation
+
+#### 1 -  What Happens in Real Life Without This Project
+
+In card payments, a **reversal** is when you cancel a transaction authorization you don’t want processed (e.g., customer cancels, POS error):
+
+* **Full reversal**: Cancel the entire amount.
+* **Partial reversal**: Cancel part of the amount (e.g., hold 1000 MAD, keep 800 MAD, reverse 200 MAD).
+* Some reversals are automatic (e.g., authorization refused, device error), but not all.
+
+#### 2 - The Problem
+
+Automation is incomplete:
+
+* Some reversals never get sent (network crash, POS bug).
+* Some are too late, causing reconciliation mismatches.
+* Partial reversals depend on merchant or network-specific rules.
+* At scale, hundreds of edge cases force manual investigation.
+
+This leads to:
+
+* Financial mismatches.
+* Merchant/issuer disputes.
+* Compliance issues with Visa, Mastercard, etc.
+
+#### 3 - What This Orchestrator Does
+
+Our **Reversal Orchestrator** acts like a smart auditor + operator:
+
+* Receives case data (JSON, XML, CSV, ZIP, RAR).
+* Validates the case and applies merchant/network rules.
+* Decides if reversal is eligible, and whether full or partial.
+* Generates ledger operations + audit records.
+* Can run in batch mode to reconcile hundreds of cases in minutes.
+* Allows merchant-specific overrides via `rules/*.yaml`.
+
+#### 5 -  Why It’s Useful
+
+Because automation isn’t perfect. Our system:
+
+* Fills gaps when POS/ATM/switch logic fails.
+* Applies custom rules beyond the core system.
+* Builds an audit trail for compliance and disputes.
+* Handles bulk cases without human intervention.
+
+## The Stack
 
 * **Python / FastAPI** service (Agno Playground app)
 * **Next.js 15** front-end (Agent UI)
 * Deterministic pipeline (no LLM required) with optional Gemini agent(s) for extras
-* Single-file mode: JSON / XML / CSV
-* **Batch mode**: ZIP **and RAR** (unzipped server-side)
+* **Single-file mode**: JSON / XML / CSV
+* **Batch mode**: ZIP and RAR (unzipped server-side)
 
-## What it does
+## What It Does
 
 * Parse a case (auth + state + reversal request)
 * Resolve rules (global + merchant override)
@@ -18,8 +65,9 @@ The stack:
 * Produce ledger ops plan
 * Persist an audit row (SQLite)
 * (Optional) call a webhook
-* Return a **short human summary** to the UI
-  `Reversal eligible (full). Amount 75 USD. Notes: No capture yet; full amount is on hold.`
+* Return a short human summary to the UI, e.g.:
+  > Reversal eligible (full). Amount 75 USD. Notes: No capture yet; full amount is on hold.
+  >
 
 ## Features
 
@@ -29,9 +77,9 @@ The stack:
 * ✅ SQLite audit trail (`reversal_audit.db`)
 * ✅ Per-merchant rule overrides (`/rules/*.yaml`)
 * ✅ CORS-safe upload endpoint
-* ✅ “Thinking” loader and graceful error messages in the UI
+* ✅“Thinking” loader and graceful error messages in the UI
 
-## Repo layout
+## Repo Layout
 
 ```
 .
@@ -62,14 +110,14 @@ The stack:
 
 * Python 3.10+
 * Node 18+ / PNPM or NPM
-* **RAR support**: `unrar` binary available on your PATH
-  * Windows: install WinRAR and add the install dir to PATH (or install `unrar` from chocolatey)
-  * macOS: `brew install unrar`
-  * Linux: `sudo apt-get install unrar` (or distro equivalent)
+* RAR support: `unrar` binary available on your PATH
+  * **Windows**: Install WinRAR and add the install dir to PATH (or install `unrar` from chocolatey)
+  * **macOS**: `brew install unrar`
+  * **Linux**: `sudo apt-get install unrar` (or distro equivalent)
 
 ## Setup
 
-### 1) Python backend
+### 1) Python Backend
 
 ```bash
 # create & activate venv (recommended)
@@ -84,7 +132,7 @@ pip install -r requirements.txt
 
 Environment (optional):
 
-```
+```bash
 # .env (repo root)
 DB_PATH=./reversal_audit.db
 WEBHOOK_URL=
@@ -103,8 +151,8 @@ You should see something like:
 Agent Playground URL: https://app.agno.com/playground?endpoint=127.0.0.1%3A7777/v1
 ```
 
-> Our upload route lives at **`POST /upload`** (no `/v1` prefix).
-> The UI automatically points to that route by taking the endpoint’s **origin**.
+Our upload route lives at `POST /upload` (no `/v1` prefix).
+The UI automatically points to that route by taking the endpoint’s origin.
 
 ### 2) Front-end UI (Next.js)
 
@@ -118,25 +166,23 @@ npm i
 npm run dev -p 3000
 ```
 
-Open: `http://localhost:3000`
+Open: [http://localhost:3000](http://localhost:3000/)
 
-* Set the **Endpoint** to `http://localhost:7777/v1` (green dot shows it’s reachable).
+* Set the Endpoint to `http://localhost:7777/v1` (green dot shows it’s reachable).
 * Choose **Reversal Agent**.
-* Click the download icon to **upload** a case file:
-  * Single: `.json`, `.xml`, `.csv`
-  * Batch: `.zip`, `.rar`
+* Click the download icon to upload a case file:
+  * **Single**: `.json`, `.xml`, `.csv`
+  * **Batch**: `.zip`, `.rar`
+* You’ll see:
+  * “Uploaded file: …”
+  * A thinking loader
+  * A short human summary (no JSON blob)
 
-You’ll see:
+## API Contract
 
-1. “Uploaded file: …”
-2. A thinking loader
-3. A **short human summary** (no JSON blob)
+**POST /upload** (`multipart/form-data`)
 
-## API contract
-
-### `POST /upload` (multipart/form-data)
-
-* **file**: single file (JSON/XML/CSV) or archive (ZIP/RAR)
+* `file`: single file (JSON/XML/CSV) or archive (ZIP/RAR)
 
 **Response**
 
@@ -147,10 +193,11 @@ You’ll see:
 }
 ```
 
-> In batch mode (ZIP/RAR), the summary condenses totals:
-> `Processed 10 cases. Eligible: 7 (full 4, partial 3). Ineligible: 3. By currency: USD: reversible total 180.0 over 6 cases; EUR: reversible total 40.0 over 1 cases`
+In batch mode (ZIP/RAR), the summary condenses totals:
 
-## Case formats
+> Processed 10 cases. Eligible: 7 (full 4, partial 3). Ineligible: 3. By currency: USD: reversible total 180.0 over 6 cases; EUR: reversible total 40.0 over 1 cases
+
+## Case Formats
 
 ### JSON
 
@@ -174,7 +221,7 @@ You’ll see:
 }
 ```
 
-> The loader also accepts `{ "case": { ... } }` and unwraps it.
+The loader also accepts `{ "case": { ... } }` and unwraps it.
 
 ### XML
 
@@ -202,7 +249,7 @@ You’ll see:
 </case>
 ```
 
-### CSV (first row used)
+### CSV
 
 ```
 auth_id,card,amount,currency,merchant_id,auth_time,captured_amount,voided,expiry_minutes,request_id,type,request_time,reason
@@ -211,15 +258,15 @@ A777,**** **** **** 1234,75,USD,M77,2025-08-16T20:30:00Z,0,false,60,R771,full,20
 
 ## Rules
 
-* Global defaults: `config/rules.yaml`
-* Merchant overrides: `rules/<merchant_id>.yaml` (merged over defaults)
+* **Global defaults**: `config/rules.yaml`
+* **Merchant overrides**: `rules/<merchant_id>.yaml` (merged over defaults)
 
-## Outputs & persistence
+## Outputs & Persistence
 
 * **SQLite**: `reversal_audit.db` (one row per processed case)
 * **Batch**: `out/summary_*.json` and `out/summary_*.csv`
 
-## CLI quick tests (optional)
+## CLI Quick Tests (Optional)
 
 Deterministic pipeline without the UI:
 
@@ -242,21 +289,5 @@ b64 = base64.b64encode(open(p,"rb").read())
 files={"file": (p, open(p,"rb"), "application/xml")}
 r = requests.post("http://127.0.0.1:7777/upload", files=files, timeout=20)
 print(r.status_code, r.json())
-PY
+
 ```
-
-## Troubleshooting
-
-* **RAR upload fails** → install `unrar` and ensure it’s on your PATH.
-* **“Failed to fetch” in UI** → check backend is on `http://127.0.0.1:7777`, endpoint in UI is `http://localhost:7777/v1`, and CORS isn’t blocked.
-* **Got JSON in chat** → backend now always returns a **plain sentence** via `summarize_result()`; make sure you’re on the latest `playground.py`.
-* **Network changed / hot reload** → ignore transient Next.js hot-reload warnings.
-
-## Notes
-
-* This code is **demo-grade**: deterministic logic, explicit side-effects, tiny schema via Pydantic. Add auth, rate-limits, and input scanning before deploying anywhere sensitive.
-* The Reporter/Planner agents are included; the upload path **does not require** an LLM.
-
-## License
-
-MIT (see `LICENSE`).
