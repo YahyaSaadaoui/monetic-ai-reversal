@@ -1,190 +1,191 @@
 # Agno Agentics Reversal Eligibility Demo
 
-Lightweight, end-to-end demo that evaluates card authorization reversal eligibility from uploaded case files and shows a human-readable summary in a Next.js UI.
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-audit_trail-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 
-## Why This Project Exists
+A fintech-focused demo that evaluates card authorization reversal eligibility from uploaded case files and returns a concise operator-friendly decision in a Next.js UI.
 
-### Non-Technical Explanation
+It combines a deterministic Python/FastAPI pipeline with an optional Agno/Gemini agent layer. The core reversal logic works without an LLM, while the agent layer can help with orchestration and summaries.
 
-#### 1 -  What Happens in Real Life Without This Project
+## Why This Exists
 
-In card payments, a **reversal** is when you cancel a transaction authorization you don’t want processed (e.g., customer cancels, POS error):
+In card payments, a reversal cancels all or part of a transaction authorization before it becomes a final financial mismatch.
 
-* **Full reversal**: Cancel the entire amount.
-* **Partial reversal**: Cancel part of the amount (e.g., hold 1000 MAD, keep 800 MAD, reverse 200 MAD).
-* Some reversals are automatic (e.g., authorization refused, device error), but not all.
+Common examples:
 
-#### 2 - The Problem
+- A customer cancels after authorization.
+- A POS or ATM flow fails after funds were held.
+- A partial capture leaves the remaining hold to release.
+- A delayed reversal creates reconciliation or dispute work.
 
-Automation is incomplete:
+At scale, reversal handling becomes messy because rules can depend on merchant, network, authorization state, expiry windows, captured amounts, and operational exceptions.
 
-* Some reversals never get sent (network crash, POS bug).
-* Some are too late, causing reconciliation mismatches.
-* Partial reversals depend on merchant or network-specific rules.
-* At scale, hundreds of edge cases force manual investigation.
+This project models that workflow as a small, testable orchestrator:
 
-This leads to:
-
-* Financial mismatches.
-* Merchant/issuer disputes.
-* Compliance issues with Visa, Mastercard, etc.
-
-#### 3 - What This Orchestrator Does
-
-Our **Reversal Orchestrator** acts like a smart auditor + operator:
-
-* Receives case data (JSON, XML, CSV, ZIP, RAR).
-* Validates the case and applies merchant/network rules.
-* Decides if reversal is eligible, and whether full or partial.
-* Generates ledger operations + audit records.
-* Can run in batch mode to reconcile hundreds of cases in minutes.
-* Allows merchant-specific overrides via `rules/*.yaml`.
-
-#### 5 -  Why It’s Useful
-
-Because automation isn’t perfect. Our system:
-
-* Fills gaps when POS/ATM/switch logic fails.
-* Applies custom rules beyond the core system.
-* Builds an audit trail for compliance and disputes.
-* Handles bulk cases without human intervention.
-
-## The Stack
-
-* **Python / FastAPI** service (Agno Playground app)
-* **Next.js 15** front-end (Agent UI)
-* Deterministic pipeline (no LLM required) with optional Gemini agent(s) for extras
-* **Single-file mode**: JSON / XML / CSV
-* **Batch mode**: ZIP and RAR (unzipped server-side)
+- Receive case data as JSON, XML, CSV, ZIP, or RAR.
+- Validate the authorization state and reversal request.
+- Apply global and merchant-specific YAML rules.
+- Decide whether the reversal is eligible, full, partial, or rejected.
+- Generate ledger operation plans.
+- Write an SQLite audit trail.
+- Return a human-readable summary for operators.
 
 ## What It Does
 
-* Parse a case (auth + state + reversal request)
-* Resolve rules (global + merchant override)
-* Validate, evaluate eligibility, compute reversible amount
-* Produce ledger ops plan
-* Persist an audit row (SQLite)
-* (Optional) call a webhook
-* Return a short human summary to the UI, e.g.:
-  > Reversal eligible (full). Amount 75 USD. Notes: No capture yet; full amount is on hold.
-  >
+- Parses single-case files and batch archives.
+- Resolves policy rules from `config/rules.yaml` and `rules/<merchant_id>.yaml`.
+- Computes reversible amounts based on captured amount, request type, expiry, and void state.
+- Produces a ledger operation plan such as `RELEASE_HOLD`, `RECORD_REVERSAL`, and `NOTIFY_MERCHANT`.
+- Stores decisions in `reversal_audit.db` for traceability.
+- Exposes a FastAPI upload endpoint consumed by the Next.js UI.
 
-## Features
+Example operator summary:
 
-* ✅ JSON / XML / CSV single files
-* ✅ ZIP / RAR batch folders
-* ✅ Human-readable summaries (no JSON echoed to the chat)
-* ✅ SQLite audit trail (`reversal_audit.db`)
-* ✅ Per-merchant rule overrides (`/rules/*.yaml`)
-* ✅ CORS-safe upload endpoint
-* ✅“Thinking” loader and graceful error messages in the UI
+> Reversal eligible (full). Amount 75 USD. Notes: No capture yet; full amount is on hold.
 
-## Repo Layout
+Batch summary example:
 
-```
+> Processed 10 cases. Eligible: 7 (full 4, partial 3). Ineligible: 3. By currency: USD: reversible total 180.0 over 6 cases; EUR: reversible total 40.0 over 1 case.
+
+## Stack
+
+| Layer | Technology |
+| --- | --- |
+| Backend | Python, FastAPI, Pydantic, SQLAlchemy, SQLite |
+| Rules | YAML global defaults and merchant overrides |
+| UI | Next.js 15, React 19, TypeScript, Tailwind |
+| Agent layer | Agno with optional Gemini model integration |
+| Inputs | JSON, XML, CSV, ZIP, RAR |
+
+## Repository Layout
+
+```text
 .
 ├── config/
-│   └── rules.yaml                     # global defaults
+│   └── rules.yaml                  # global reversal policy defaults
 ├── rules/
-│   ├── M01.yaml                       # merchant overrides (examples)
+│   ├── M01.yaml                    # merchant override examples
 │   └── M09.yaml
-├── data/                              # sample inputs
-│   ├── reversal_case.json
-│   ├── reversal_ok.xml
-│   ├── reversal_expired.csv
-│   ├── reversal_ok.zip                # batch
-│   └── reversal_ok.rar                # batch
-├── out/                               # generated summaries (batch)
+├── data/                           # sample single and batch inputs
+├── out/                            # generated batch summaries
 ├── ui/
-│   └── agent-ui/                      # Next.js app
-├── l4_reversal_orchestrator.py        # deterministic pipeline
-├── ui_tools.py                        # upload + batch adapters (ZIP/RAR)
-├── playground.py                      # FastAPI + /upload + agents
-├── web_app.py                         # (optional) minimal HTML app
-├── reversal_agent.py                  # (optional) agent entrypoint
+│   └── agent-ui/                   # Next.js operator UI
+├── l4_reversal_orchestrator.py     # deterministic pipeline
+├── ui_tools.py                     # upload and batch adapters
+├── playground.py                   # FastAPI app and Agno playground integration
 ├── requirements.txt
-└── reversal_audit.db                  # created on first run
+└── reversal_audit.db               # local audit DB generated during runs
 ```
 
 ## Requirements
 
-* Python 3.10+
-* Node 18+ / PNPM or NPM
-* RAR support: `unrar` binary available on your PATH
-  * **Windows**: Install WinRAR and add the install dir to PATH (or install `unrar` from chocolatey)
-  * **macOS**: `brew install unrar`
-  * **Linux**: `sudo apt-get install unrar` (or distro equivalent)
+- Python 3.10+
+- Node.js 18+
+- PNPM or NPM
+- Optional: Gemini API key for Agno/Gemini summaries
+- Optional for RAR batch input: `unrar` available on `PATH`
 
-## Setup
-
-### 1) Python Backend
+RAR support:
 
 ```bash
-# create & activate venv (recommended)
+# Windows: install WinRAR and add it to PATH, or use Chocolatey
+choco install unrar
+
+# macOS
+brew install unrar
+
+# Linux
+sudo apt-get install unrar
+```
+
+## Quick Start
+
+### 1. Run the Python backend
+
+```bash
+git clone https://github.com/YahyaSaadaoui/monetic-ai-reversal.git
+cd monetic-ai-reversal
+
 python -m venv venv
+
 # Windows
 venv\Scripts\activate
+
 # macOS/Linux
 source venv/bin/activate
 
 pip install -r requirements.txt
-```
-
-Environment (optional):
-
-```bash
-# .env (repo root)
-DB_PATH=./reversal_audit.db
-WEBHOOK_URL=
-MODEL_ID=gemini-1.5-flash
-```
-
-Run the playground API (serves Agno Playground + our custom routes):
-
-```bash
 python playground.py
 ```
 
-You should see something like:
+The API runs at:
 
+```text
+http://127.0.0.1:7777
 ```
-Agent Playground URL: https://app.agno.com/playground?endpoint=127.0.0.1%3A7777/v1
+
+The upload route is:
+
+```text
+POST /upload
 ```
 
-Our upload route lives at `POST /upload` (no `/v1` prefix).
-The UI automatically points to that route by taking the endpoint’s origin.
-
-### 2) Front-end UI (Next.js)
+### 2. Run the Next.js UI
 
 ```bash
 cd ui/agent-ui
-# with pnpm
-pnpm i
+pnpm install
 pnpm dev -p 3000
-# or with npm
-npm i
-npm run dev -p 3000
 ```
 
-Open: [http://localhost:3000](http://localhost:3000/)
+Or with npm:
 
-* Set the Endpoint to `http://localhost:7777/v1` (green dot shows it’s reachable).
-* Choose **Reversal Agent**.
-* Click the download icon to upload a case file:
-  * **Single**: `.json`, `.xml`, `.csv`
-  * **Batch**: `.zip`, `.rar`
-* You’ll see:
-  * “Uploaded file: …”
-  * A thinking loader
-  * A short human summary (no JSON blob)
+```bash
+cd ui/agent-ui
+npm install
+npm run dev -- -p 3000
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+Set the endpoint to:
+
+```text
+http://localhost:7777/v1
+```
+
+Then choose the reversal agent and upload a `.json`, `.xml`, `.csv`, `.zip`, or `.rar` case file.
+
+## Environment
+
+Create an optional `.env` file in the repository root:
+
+```env
+DB_PATH=./reversal_audit.db
+WEBHOOK_URL=
+MODEL_ID=gemini-1.5-flash
+GOOGLE_API_KEY=
+```
+
+The deterministic business pipeline does not require an API key. The key is only needed if you want the optional Gemini-powered agent behavior.
 
 ## API Contract
 
-**POST /upload** (`multipart/form-data`)
+### POST `/upload`
 
-* `file`: single file (JSON/XML/CSV) or archive (ZIP/RAR)
+Request: `multipart/form-data`
 
-**Response**
+| Field | Description |
+| --- | --- |
+| `file` | Single case file or ZIP/RAR archive |
+
+Success response:
 
 ```json
 {
@@ -193,11 +194,7 @@ Open: [http://localhost:3000](http://localhost:3000/)
 }
 ```
 
-In batch mode (ZIP/RAR), the summary condenses totals:
-
-> Processed 10 cases. Eligible: 7 (full 4, partial 3). Ineligible: 3. By currency: USD: reversible total 180.0 over 6 cases; EUR: reversible total 40.0 over 1 cases
-
-## Case Formats
+## Input Examples
 
 ### JSON
 
@@ -211,7 +208,11 @@ In batch mode (ZIP/RAR), the summary condenses totals:
     "merchant_id": "M77",
     "auth_time": "2025-08-16T20:30:00Z"
   },
-  "state": { "captured_amount": 0, "voided": false, "expiry_minutes": 60 },
+  "state": {
+    "captured_amount": 0,
+    "voided": false,
+    "expiry_minutes": 60
+  },
   "reversal_request": {
     "request_id": "R771",
     "type": "full",
@@ -221,7 +222,13 @@ In batch mode (ZIP/RAR), the summary condenses totals:
 }
 ```
 
-The loader also accepts `{ "case": { ... } }` and unwraps it.
+The loader also accepts:
+
+```json
+{ "case": { } }
+```
+
+and unwraps the nested case object.
 
 ### XML
 
@@ -251,43 +258,51 @@ The loader also accepts `{ "case": { ... } }` and unwraps it.
 
 ### CSV
 
-```
+```csv
 auth_id,card,amount,currency,merchant_id,auth_time,captured_amount,voided,expiry_minutes,request_id,type,request_time,reason
 A777,**** **** **** 1234,75,USD,M77,2025-08-16T20:30:00Z,0,false,60,R771,full,2025-08-16T20:40:00Z,customer canceled
 ```
 
-## Rules
+## CLI Smoke Tests
 
-* **Global defaults**: `config/rules.yaml`
-* **Merchant overrides**: `rules/<merchant_id>.yaml` (merged over defaults)
-
-## Outputs & Persistence
-
-* **SQLite**: `reversal_audit.db` (one row per processed case)
-* **Batch**: `out/summary_*.json` and `out/summary_*.csv`
-
-## CLI Quick Tests (Optional)
-
-Deterministic pipeline without the UI:
+Run the deterministic pipeline directly:
 
 ```bash
-# single case
 python l4_reversal_orchestrator.py data/reversal_ok.xml
-
-# batch folder
 python l4_reversal_orchestrator.py --batch data --out out
 ```
 
-Local upload smoke test:
+Test the upload endpoint while the backend is running:
 
 ```bash
-# with backend running on 127.0.0.1:7777
 python - <<'PY'
-import base64, requests
-p = "data/reversal_ok.xml"
-b64 = base64.b64encode(open(p,"rb").read())
-files={"file": (p, open(p,"rb"), "application/xml")}
-r = requests.post("http://127.0.0.1:7777/upload", files=files, timeout=20)
-print(r.status_code, r.json())
+import requests
 
+path = "data/reversal_ok.xml"
+with open(path, "rb") as handle:
+    files = {"file": (path, handle, "application/xml")}
+    response = requests.post("http://127.0.0.1:7777/upload", files=files, timeout=20)
+
+print(response.status_code)
+print(response.json())
+PY
 ```
+
+## Good First Improvements
+
+These are realistic contribution ideas for anyone who wants to extend the project:
+
+- Add more test cases for partial reversal edge cases.
+- Add Mastercard/Visa-style response-code examples.
+- Add a small dashboard page for audit history from SQLite.
+- Add unit tests around rule merging and amount calculation.
+- Add screenshots or a GIF of the upload flow.
+- Add Docker Compose for backend + frontend local startup.
+
+## Notes
+
+This is a learning/demo project. It is not connected to a live payment network and should not be used as production payment infrastructure without security review, operational hardening, audit controls, and real scheme compliance validation.
+
+## License
+
+Add a license before using this in a shared or commercial context.
