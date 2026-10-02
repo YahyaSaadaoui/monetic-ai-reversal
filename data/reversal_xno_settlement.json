@@ -1,0 +1,34 @@
+{
+  "case_id": "XNO-20261002-001",
+  "description": "Card authorization reversal with agent-to-agent Nano (XNO) settlement — a cross-operator reversal where the agent settling the release also records an instant feeless transfer.",
+  "card": {
+    "masked_pan": "411111-…-1114",
+    "scheme": "Visa",
+    "auth_code": "0815F7",
+    "authorized_at": "2026-10-01T14:22:00Z",
+    "capture_state": "partially_captured",
+    "captured_amount": 45.00,
+    "currency": "USD"
+  },
+  "reversal_request": {
+    "type": "partial",
+    "requested_amount": 45.00,
+    "currency": "USD",
+    "reason": "Agent handoff completed — unused hold released back to requesting agent"
+  },
+  "agent_settlement": {
+    "rail": "nano",
+    "asset": "XNO",
+    "amount_raw": "0.0005",
+    "amount_usd_equivalent": 0.03,
+    "note": "Instant feeless settlement between agents, settled at confirmation alongside the card reversal. A Nano block is the receipt for the card release."
+  },
+  "expected_decision": "eligible",
+  "expected_outcome": "full",
+  "ledger_operations": [
+    "RELEASE_HOLD",
+    "RECORD_REVERSAL",
+    "NOTIFY_REQUESTING_AGENT"
+  ],
+  "notes": "Demonstrates dual settlement: the card leg releases a USD hold through conventional rails, and the inter-agent Nano leg settles instantly at 0 fee. The operator sees both in one audit row."
+}
