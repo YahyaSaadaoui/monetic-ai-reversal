@@ -1,0 +1,27 @@
+{
+  "auth": {
+    "auth_id": "A456",
+    "card": "**** 1114",
+    "amount": 100.00,
+    "currency": "USD",
+    "merchant_id": "M01",
+    "auth_time": "2026-10-01T14:05:00Z"
+  },
+  "state": {
+    "captured_amount": 45.00,
+    "voided": false,
+    "expiry_minutes": 60
+  },
+  "reversal_request": {
+    "request_id": "R654",
+    "type": "partial",
+    "request_time": "2026-10-01T14:22:00Z",
+    "reason": "agent handoff completed - unused hold released"
+  },
+  "agent_settlement": {
+    "rail": "nano",
+    "asset": "XNO",
+    "amount_xno": "0.0005",
+    "note": "Optional context, ignored by the eligibility rules: the agent that requested the release also settled its fee to the other agent in Nano (XNO), which has no network fee. The Nano block hash would sit beside the reversal in the same audit row."
+  }
+}
